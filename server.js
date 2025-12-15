@@ -190,9 +190,9 @@ app.get("/", (req, res) => {
 
             <div class="box" style="border-color: #1f6feb;">
                 <h2>⚙️ Sozlash</h2>
-                <p>Server manzili: <span style="color:#58a6ff">${MY_SERVER_URL}</span></p>
+                <p>Server manzili: <span style="color:#58a6ff">${https://server-xkuu.onrender.com}</span></p>
                 <p>Bookmarklet uchun kod:</p>
-                <textarea rows="2" readonly>javascript:import('${MY_SERVER_URL}/f1.js')</textarea>
+                <textarea rows="2" readonly>"https://server-xkuu.onrender.com")</textarea>
             </div>
         </body>
         </html>
