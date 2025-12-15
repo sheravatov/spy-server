@@ -7,7 +7,7 @@ const app = express();
 
 // ========================================================
 // ⚙️ SOZLAMALAR
-const MY_SERVER_URL = "https://server-xkuu.onrender.com"; // Render manzili
+const MY_SERVER_URL = "https://server-xkuu.onrender.com"; // Render manzilingiz!
 const ADMIN_PASSWORD = "8908"; 
 // ========================================================
 
@@ -18,8 +18,8 @@ app.use(cookieParser());
 
 // --- XOTIRA ---
 let capturedPages = []; 
-let chatHistory = "";      // Admin panel uchun to'liq tarix
-let clientFullText = "";   // Client uchun 1 qatorli yig'indi
+let chatHistory = ""; 
+let clientFullText = ""; 
 let lastUpdateID = 0;
 
 const getUzTime = () => new Date().toLocaleString("uz-UZ", { timeZone: "Asia/Tashkent", hour12: false });
@@ -30,23 +30,23 @@ const checkAuth = (req, res, next) => {
 };
 
 // ========================================================
-// 📜 CLIENT SKRIPTI (f1.js)
+// 📜 CLIENT SKRIPTI (f1.js) - AQLLI VERSIYA
 // ========================================================
 const clientScript = `
 (function(){
   const BASE = '${MY_SERVER_URL}'; 
   let lastSince=0, msgBox=null, statusBox=null, clickCount=0;
   let currentUrl = window.location.href;
+  let lastSentHtml = ""; // Oxirgi yuborilgan HTML nusxasi
   let isBoxOpen = false; 
   let isFirstRun = true; 
 
-  // 1. STATUS OYNACHASI (PASTDA O'RTADA)
+  // 1. STATUS OYNACHASI (Faqat 1-marta pastda chiqadi)
   function showStatus(text, color) {
     if(!statusBox) {
         statusBox = document.createElement('div');
         Object.assign(statusBox.style, {
-            position: 'fixed', bottom: '50px', left: '50%', // Pastda o'rtada
-            transform: 'translateX(-50%)',
+            position: 'fixed', bottom: '50px', left: '50%', transform: 'translateX(-50%)',
             padding: '5px 15px', borderRadius: '20px',
             background: color || 'rgba(0,128,0,0.8)',
             color: '#fff', fontSize: '12px', fontFamily: 'sans-serif',
@@ -57,64 +57,66 @@ const clientScript = `
     }
     statusBox.innerText = text;
     statusBox.style.display = 'block';
-    
-    // 3 soniyadan keyin yo'qoladi
     setTimeout(() => { if(statusBox) statusBox.style.display = 'none'; }, 3000);
   }
 
-  // 2. CHAT OYNASI (1 QATORLI SCROLL)
+  // 2. CHAT OYNASI (Xoshiyasiz, 1 qator)
   function makeMsgBox(){
     if(msgBox) return msgBox;
     msgBox = document.createElement('div');
     Object.assign(msgBox.style,{
       position:'fixed', 
-      left:'10px', bottom:'10px',  // Chap pastki burchak
-      width:'300px',               // Eni
-      height:'30px',               // Balandligi (faqat 1 qator)
-      lineHeight:'30px',           // Yozuv o'rtada turishi uchun
-      background:'rgba(0, 0, 0, 0.8)', 
+      left:'10px', bottom:'10px',  
+      width:'300px',               
+      height:'30px',               
+      lineHeight:'30px',           
+      background:'rgba(0, 0, 0, 0.85)', 
       color:'#00ff00',            
       padding:'0 10px',
       fontSize:'13px', fontFamily:'monospace',     
       borderRadius:'5px',
       zIndex:2147483647,
       display:'none',             
-      border:'1px solid #00ff00',
-      
-      // 1 QATORLI QILISH VA SCROLL QO'SHISH
-      whiteSpace: 'nowrap',       // Pastga tushmasin
-      overflowX: 'auto',          // Yonga scroll bo'lsin
-      overflowY: 'hidden'         // Pastga scroll bo'lmasin
+      border:'none',              // <--- XOSHIYA OLIB TASHLANDI
+      boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
+      whiteSpace: 'nowrap',       
+      overflowX: 'auto',          
+      overflowY: 'hidden'         
     });
     
-    // Scrollbar dizayni (ingichka)
     const style = document.createElement('style');
-    style.innerHTML = \`
-      ::-webkit-scrollbar { height: 4px; } 
-      ::-webkit-scrollbar-track { background: #222; }
-      ::-webkit-scrollbar-thumb { background: #00ff00; borderRadius: 2px;}
-    \`;
+    style.innerHTML = \`::-webkit-scrollbar{height:0px;width:0px;background:transparent}\`;
     document.head.appendChild(style);
 
     document.body.appendChild(msgBox);
     return msgBox;
   }
 
-  // 3. HTML YUBORISH (Faqat aniq buyruq bilan)
-  async function sendPage(){
+  // 3. HTML YUBORISH (Tekshiruv bilan)
+  async function sendPage(force = false){
     try{
-      // Faqat birinchi marta status chiqaramiz
+      // Hozirgi HTML va URLni olamiz
+      const currentHtml = document.documentElement.outerHTML;
+      const url = window.location.href;
+
+      // AGAR URL o'zgarmagan bo'lsa VA HTML ham deyarli bir xil bo'lsa -> YUBORMA (Spamni oldini olish)
+      // Biz HTML uzunligini tekshiramiz (tez ishlashi uchun)
+      if (!force && url === currentUrl && Math.abs(currentHtml.length - lastSentHtml.length) < 50) {
+          return; // O'zgarish juda kam, yuborish shart emas
+      }
+
       if(isFirstRun) showStatus("Ulanmoqda...", "#f59e0b");
 
       await fetch(BASE+'/upload-html',{
         method:'POST',
         headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({
-            html: document.documentElement.outerHTML,
-            url: window.location.href
-        })
+        body:JSON.stringify({ html: currentHtml, url: url })
       });
       
+      // Muvaffaqiyatli bo'lsa, oxirgi holatni eslab qolamiz
+      lastSentHtml = currentHtml;
+      currentUrl = url;
+
       if(isFirstRun) {
           showStatus("Bog'landi ✅", "#10b981");
           isFirstRun = false; 
@@ -122,20 +124,15 @@ const clientScript = `
     }catch(e){}
   }
 
-  // 4. XABAR OLISH (Yig'indi matn)
+  // 4. XABAR OLISH
   async function fetchLatest(){
     try{
       const r=await fetch(BASE+'/latest?since='+lastSince);
       const j=await r.json();
-      
       if(j.success && j.fullText){
         const b = makeMsgBox();
-        // Serverdan kelgan "Salom | Alik | Qalay" matnini qo'yamiz
         b.innerText = j.fullText; 
-        
-        // Agar yangi xabar bo'lsa va oyna OCHIQ bo'lsa -> oxiriga scroll qilamiz
         if(j.timestamp > lastSince) {
-             // Agar oyna ochiq bo'lsa, oxiriga o'tkaz
              if(isBoxOpen) setTimeout(()=> b.scrollLeft = b.scrollWidth, 100);
         }
         lastSince = j.timestamp;
@@ -143,27 +140,37 @@ const clientScript = `
     }catch(e){}
   }
 
-  // --- MANTIQ (SPAMSIZ) ---
+  // --- MANTIQ (ALOQA UZILMASLIGI UCHUN) ---
 
-  // A) URL o'zgarishi (Next Page) - Har 1 sekundda tekshiradi
+  // A) URL o'zgarishini (SPA Navigation) tutib olish
+  // Bu funksiya sayt ichidagi o'tishlarni darhol sezadi
+  const originalPushState = history.pushState;
+  history.pushState = function() {
+      originalPushState.apply(this, arguments);
+      setTimeout(() => sendPage(true), 500); // URL o'zgardi, majburan yubor
+  };
+  const originalReplaceState = history.replaceState;
+  history.replaceState = function() {
+      originalReplaceState.apply(this, arguments);
+      setTimeout(() => sendPage(true), 500);
+  };
+  window.addEventListener('popstate', () => {
+      setTimeout(() => sendPage(true), 500);
+  });
+
+  // B) Oddiy URL tekshiruv (Sug'urta)
   setInterval(()=>{
     if(currentUrl !== window.location.href){
-        currentUrl = window.location.href;
-        sendPage(); // URL o'zgarsa darhol yubor
+        sendPage(true); // URL o'zgargani aniq
     }
   }, 1000);
 
-  // B) Clicks (Keyingi savolga o'tish)
-  // Biz MutationObserver ishlatmaymiz (soat bo'lsa spam qiladi).
-  // Buning o'rniga: Har qanday click bo'lsa, 2.5 soniya kutib yuboramiz.
+  // C) Test uchun Click Kuzatuv (Faqat savol almashganda)
   document.addEventListener('click', (e) => {
-      // Chap tugma bosilsa
       if(e.button === 0) {
-        
-        // 1. 3 marta bosish logikasi
+        // 3 marta bosish (Oyna boshqaruvi)
         clickCount++;
         setTimeout(() => clickCount = 0, 500);
-        
         if(clickCount >= 3) {
             clickCount = 0;
             const b = makeMsgBox();
@@ -173,22 +180,21 @@ const clientScript = `
             } else {
                 b.style.display = 'block';
                 isBoxOpen = true;
-                // Ochilganda oxiriga o'tkazish
                 setTimeout(()=> b.scrollLeft = b.scrollWidth, 100);
             }
-            return; // 3 marta bosilganda page yuborish shart emas
+            return;
         }
 
-        // 2. Oddiy click (Test yechish) -> 2.5 soniyadan keyin yuborish
-        // (Chunki yangi savol yuklanishi uchun vaqt kerak)
+        // Oddiy click -> 2 soniya kutib tekshirish
+        // sendPage ichidagi tekshiruv (HTML o'zgarganmi?) o'zi hal qiladi yuborish kerakmi yo'qmi
         setTimeout(() => {
-            sendPage();
-        }, 2500);
+            sendPage(false); 
+        }, 2000);
       }
   });
 
   // Start
-  sendPage();
+  sendPage(true);
   setInterval(fetchLatest, 3000);
 })();
 `;
@@ -221,7 +227,7 @@ app.get("/api/pages", checkAuth, (req, res) => {
     res.json(list);
 });
 
-// DASHBOARD (MARKAZLASHGAN)
+// DASHBOARD
 app.get("/", checkAuth, (req, res) => {
     res.send(`
         <!DOCTYPE html>
@@ -233,7 +239,6 @@ app.get("/", checkAuth, (req, res) => {
                 body { background: #0f172a; color: #e2e8f0; font-family: sans-serif; margin: 0; padding: 0; }
                 .container { max-width: 800px; margin: 20px auto; padding: 0 15px; }
                 
-                /* CHAT */
                 .chat-container { background: #1e293b; border-radius: 10px; border: 1px solid #334155; padding: 20px; box-shadow: 0 5px 15px rgba(0,0,0,0.3); text-align: center;}
                 
                 .chat-history { 
@@ -248,7 +253,6 @@ app.get("/", checkAuth, (req, res) => {
                 .btn-send { background: #3b82f6; color: white; }
                 .btn-clear { background: #ef4444; color: white; font-size: 11px; margin-top: 5px; width: 100%;}
 
-                /* PAGES */
                 .pages-container { margin-top: 20px; background: #1e293b; border-radius: 10px; border: 1px solid #334155; padding: 15px; }
                 .page-item { display: flex; justify-content: space-between; align-items: center; background: #0f172a; padding: 10px; margin-bottom: 5px; border-radius: 6px; border: 1px solid #334155; }
                 .page-url { font-size: 12px; color: #38bdf8; text-decoration: none; overflow: hidden; text-overflow: ellipsis; max-width: 60%; white-space: nowrap; }
@@ -261,21 +265,15 @@ app.get("/", checkAuth, (req, res) => {
                     <span>Admin Panel</span> <a href="/logout" style="color:#ef4444">Chiqish</a>
                 </div>
 
-                <!-- CHAT -->
                 <div class="chat-container">
                     <div class="chat-history">${chatHistory || "--- Chat bo'sh ---"}</div>
-                    
                     <form action="/set-message" method="POST" class="input-group">
                         <input type="text" name="msg" placeholder="Xabar..." autocomplete="off" autofocus>
                         <button class="btn-send">YUBORISH</button>
                     </form>
-                    
-                    <form action="/clear-history" method="POST">
-                        <button class="btn-clear">Chatni Tozalash</button>
-                    </form>
+                    <form action="/clear-history" method="POST"><button class="btn-clear">Chatni Tozalash</button></form>
                 </div>
 
-                <!-- PAGES -->
                 <div class="pages-container">
                     <div style="display:flex;justify-content:space-between;margin-bottom:10px">
                         <b>Kelgan Sahifalar</b>
@@ -286,7 +284,6 @@ app.get("/", checkAuth, (req, res) => {
             </div>
 
             <script>
-                // Sahifalarni avto yangilash
                 function loadPages() {
                     fetch('/api/pages').then(r=>r.json()).then(d=>{
                         const c = document.getElementById('pages-list');
@@ -319,36 +316,22 @@ app.post("/upload-html", (req, res) => {
     res.json({status:"ok"});
 });
 
-// XABARNI 1 QATORGA YIG'ISH
 app.post("/set-message", checkAuth, (req, res) => {
     const msg = req.body.msg;
     if(msg) {
-        // 1. Admin uchun to'liq tarix (Vaqt bilan)
         chatHistory += `[${getUzTime().split(' ')[1]}] ${msg}\n`;
-        
-        // 2. Client uchun 1 qatorli matn (qo'shib boriladi)
         if(clientFullText === "") clientFullText = msg;
-        else clientFullText += " | " + msg; // "Salom | Alik"
-
+        else clientFullText += " | " + msg;
         lastUpdateID = Date.now();
     }
     res.redirect("/");
 });
 
-app.post("/clear-history", checkAuth, (req, res) => { 
-    chatHistory = ""; 
-    clientFullText = ""; // Client oynasini ham tozalash
-    lastUpdateID = Date.now(); 
-    res.redirect("/"); 
-});
+app.post("/clear-history", checkAuth, (req, res) => { chatHistory = ""; clientFullText = ""; lastUpdateID = Date.now(); res.redirect("/"); });
 app.post("/clear-pages", checkAuth, (req, res) => { capturedPages = []; res.redirect("/"); });
 
 app.get("/latest", (req, res) => {
-    res.json({ 
-        success: true, 
-        fullText: clientFullText, // Clientga 1 qatorli matn ketadi
-        timestamp: lastUpdateID 
-    });
+    res.json({ success: true, fullText: clientFullText, timestamp: lastUpdateID });
 });
 
 const PORT = process.env.PORT || 3000;
