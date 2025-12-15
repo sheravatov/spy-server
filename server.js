@@ -8,7 +8,7 @@ const app = express();
 // ⚙️ SOZLAMALAR (Eng muhim joyi!)
 // Renderdagi loyiha manzilingizni shu yerga yozing:
 // Oxirida / belgisi bo'lmasin!
-const MY_SERVER_URL = "https://sizning-loyiha-nomingiz.onrender.com"; 
+const MY_SERVER_URL = "https://server-xkuu.onrender.com"; 
 // ========================================================
 
 // 1. Sozlamalar
